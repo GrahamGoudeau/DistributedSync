@@ -120,7 +120,7 @@ defmodule DistSync.Client do
     basename = Path.basename file
     {:server_time, time} = server_call {:get_time}, server
     case File.read file do
-      {:ok, contents} -> server_cast {:update, self, basename, :zlib.zip(contents)}, server
+      {:ok, contents} -> server_cast {:update, self, basename, {time, :zlib.zip(contents)}}, server
       _ -> :deleted
     end
   end
