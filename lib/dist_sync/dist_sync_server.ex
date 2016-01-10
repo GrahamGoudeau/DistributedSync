@@ -25,7 +25,11 @@ defmodule DistSync.Server do
   end
 
   def handle_cast(_, state) do
-    {:noreply, state
+    {:noreply, state}
+  end
+
+  def handle_call({:get_time}, _from, state) do
+    {:reply, {:system_time, :os.system_time}, state}
   end
 
   def handle_call({:sync, {fetch_pid, serve_pid}}, _from, state) do
