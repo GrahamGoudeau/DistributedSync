@@ -23,6 +23,15 @@ defmodule DistSync.Server do
     {:noreply, updated_state}
   end
 
+  def handle_cast({:delete, filename, skip_pids}, state) do
+    recipients = get_fetch_threads(state) -- skip_pids
+    broadcast recipients, {:delete, filename}
+    removed_digest_map = get_file_digests(state) |> Map.delete filename
+
+    updated_state = Map.update! state, :file_digests, fn _ -> removed_digest_map end
+    {:noreply, updated_state}
+  end
+
   def handle_cast(_, state) do
     {:noreply, state}
   end
@@ -38,9 +47,13 @@ defmodule DistSync.Server do
     set_added_sync = Map.get(state, :subscribers) |> MapSet.put {new_id, fetch_pid, serve_pid}
 
     # update the state with new subscribers set and new ID value
-    updated_state = state |> (Map.put :subscribers, set_added_sync) |> (Map.put :sync_id, new_id + 1)
+    updated_state = state |> (Map.put :subscribers, set_added_sync)
 
-    {:reply, {:sync_id, new_id}, updated_state}
+    {:reply, {:update_all, get_file_digests(state)}, updated_state}
+  end
+
+  def handle_call({:refresh_all}, _from, state) do
+    {:reply, get_file_digests(state)}
   end
 
   def start_link() do

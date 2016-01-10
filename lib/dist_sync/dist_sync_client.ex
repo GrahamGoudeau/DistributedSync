@@ -9,8 +9,9 @@ defmodule DistSync.Client do
 
     if node_status == true do
       fetch_serve_pids = {fetch_pid, _} = setup_threads absolute_directory, server_atom
-      sync_response = server_call {:sync, fetch_serve_pids}, server_atom
-      send fetch_pid, sync_response
+      server_response = server_call {:sync, fetch_serve_pids}, server_atom
+      send fetch_pid, server_response
+      :ok
     else
       IO.puts "Failed to connect; reason: '#{node_status}'"
     end
@@ -20,7 +21,7 @@ defmodule DistSync.Client do
     fetch_thread = spawn_link __MODULE__, :setup_fetch, [directory]
 
     # tell the serve_thread the pid of the fetch thread, so that we
-    # avoid serving our own content to ourselves
+    # avoid serving content from this directory back to this directory
     serve_thread = spawn_link __MODULE__, :setup_serve, [directory, fetch_thread, server]
     {fetch_thread, serve_thread}
   end
@@ -31,9 +32,10 @@ defmodule DistSync.Client do
 
   def fetch_loop(directory) do
     receive do
+      {:update_all, all_digests} -> handle_fetch_update_all directory, all_digests
       {:update, filename, compressed_contents} ->
         handle_fetch_update directory, filename, compressed_contents
-      {:delete, filename} -> filename
+      {:delete, filename} -> handle_fetch_delete directory, filename
     end
 
     fetch_loop(directory)
@@ -46,9 +48,44 @@ defmodule DistSync.Client do
     serve_loop directory, files, file_digests_map, fetch_thread, server
   end
 
+  defp decompress(compressed) do
+    :zlib.unzip compressed
+  end
+
+  defp compress(contents) do
+    :zlib.zip contents
+  end
+
+  defp handle_fetch_update_all(dir, all_digests) do
+    digest_list = Map.to_list all_digests
+    update_all_files dir, digest_list
+  end
+
+  defp update_all_files(_, []) do end
+  defp update_all_files(dir, [{filename, {server_mtime, compressed_contents}} | rest]) do
+    full_filename = dir <> "/" <> filename
+    exists = File.exists? full_filename
+
+    case (not exists) or (get_file_mtime full_filename) < server_mtime do 
+      true -> handle_fetch_update(dir, filename, compressed_contents)
+      _ -> :ok
+    end
+
+    update_all_files dir, rest
+  end
+
+  defp handle_fetch_delete(dir, filename) do
+    IO.puts "Fetched DELETE for " <> filename <> " to " <> dir
+
+    case File.rm(dir <> "/" <> filename) do
+      :ok -> :ok
+      {:error, reason} -> reason
+    end
+  end
+
   defp handle_fetch_update(dir, filename, compressed_contents) do
     IO.puts "Fetched UPDATE for " <> filename <> " to " <> dir
-    #File.write! dir <> "/" <> filename, (:zlib.unzip compressed_contents)
+    File.write! dir <> "/" <> filename, (decompress compressed_contents)
   end
 
   defp serve_loop(dir, files, file_digests_map, fetch_thread, server) do
@@ -103,10 +140,10 @@ defmodule DistSync.Client do
   end
 
   defp serve_delete_file(file, fetch_thread, server) do
-#    IO.puts "Serving DELETE from " <> file
-#    basename = Path.basename file
-#    server_cast {:delete
-    IO.puts "Not implemented delete yet"
+    IO.puts "Serving DELETE from " <> file
+
+    basename = Path.basename file
+    server_cast {:delete, basename, [fetch_thread]}, server
   end
 
   defp serve_delete_files(files, fetch_thread, server) do
@@ -119,17 +156,24 @@ defmodule DistSync.Client do
     Enum.map files, map_serve
   end
 
+  defp get_file_mtime(file) do
+    case File.stat file, [time: :posix] do
+      {:ok, stat} -> stat.mtime
+      {:error, reason} -> reason
+    end
+  end
+
   defp serve_update_file(file, fetch_thread, server) do
     IO.puts "Serving UPDATE from " <> file
-    basename = Path.basename file
 
-    # use the server's time scale to avoid ambiguities
-    {:server_time, time} = server_call {:get_time}, server
-    updated_digest = {time, :zlib.zip(contents)}
+    basename = Path.basename file
+    time = get_file_mtime file
 
     case File.read file do
-      {:ok, contents} -> server_cast {:update, basename, updated_digest, [fetch_thread]}, server
-      _ -> :deleted
+      {:ok, contents} ->
+        updated_digest = {time, compress(contents)}
+        server_cast {:update, basename, updated_digest, [fetch_thread]}, server
+      {:error, reason} -> reason
     end
   end
 end
