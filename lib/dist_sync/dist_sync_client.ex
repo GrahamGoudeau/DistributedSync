@@ -24,9 +24,8 @@ defmodule DistSync.Client do
     receive do
       {:update, _, _} -> IO.puts "Got an update to " <> directory <> "!"
     after
-      500 -> :timeout
+      0 -> :timeout
     end
-    :timer.sleep(3000)
     setup_fetch(directory)
   end
 
