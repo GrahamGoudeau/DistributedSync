@@ -14,10 +14,10 @@ defmodule DistSync.Server do
 
   # expects digest: {time_modified, compressed_contents}
   # where time_modified is in seconds
-  def handle_cast({:update, from, filename, digest}, state) do
+  def handle_cast({:update, filename, digest, skip_pids}, state) do
     {time_modified, _} = digest
     updated_state = case needs_global_update? state, filename, time_modified do
-      true -> perform_update from, filename, digest, state
+      true -> perform_update filename, digest, skip_pids, state
       _ -> state
     end
     {:noreply, updated_state}
@@ -47,9 +47,9 @@ defmodule DistSync.Server do
     GenServer.start_link(__MODULE__, %{file_digests: %{}, subscribers: %MapSet{}, sync_id: 0}, name: @server_name)
   end
 
-  defp perform_update(from, filename, digest, state) do
+  defp perform_update(filename, digest, skip_pids, state) do
     # only serve the changes to the directories OTHER than where the change originated from
-    recipients = for fetch_thread <- get_fetch_threads(state), fetch_thread != from, do: fetch_thread
+    recipients = get_fetch_threads(state) -- skip_pids
 
     {time_modified, compressed_contents} = digest
 

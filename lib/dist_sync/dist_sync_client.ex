@@ -18,7 +18,7 @@ defmodule DistSync.Client do
 
   defp setup_threads(directory, server) do
     fetch_thread = spawn_link __MODULE__, :setup_fetch, [directory]
-    serve_thread = spawn_link __MODULE__, :setup_serve, [directory, server]
+    serve_thread = spawn_link __MODULE__, :setup_serve, [directory, fetch_thread, server]
     {fetch_thread, serve_thread}
   end
 
@@ -36,19 +36,19 @@ defmodule DistSync.Client do
     fetch_loop(directory)
   end
 
-  def setup_serve(directory, server) do
+  def setup_serve(directory, fetch_thread, server) do
     files = get_files directory
     file_digests_map = build_digests_map files
-    serve_update_files files, server
-    serve_loop directory, files, file_digests_map, server
+    serve_update_files files, fetch_thread, server
+    serve_loop directory, files, file_digests_map, fetch_thread, server
   end
 
   defp handle_fetch_update(dir, filename, compressed_contents) do
     IO.puts "Fetched UPDATE for " <> filename <> " to " <> dir
-    File.write! dir <> "/" <> filename, (:zlib.unzip compressed_contents)
+    #File.write! dir <> "/" <> filename, (:zlib.unzip compressed_contents)
   end
 
-  defp serve_loop(dir, files, file_digests_map, server) do
+  defp serve_loop(dir, files, file_digests_map, fetch_thread, server) do
     new_files_list = get_files dir
     new_digests = build_digests_map new_files_list
 
@@ -58,9 +58,9 @@ defmodule DistSync.Client do
 
     deleted_files = files -- new_files_list
 
-    serve_update_files updated_files, server
-    serve_delete_files deleted_files, server
-    serve_loop dir, new_files_list, new_digests, server
+    serve_update_files updated_files, fetch_thread, server
+    serve_delete_files deleted_files, fetch_thread, server
+    serve_loop dir, new_files_list, new_digests, fetch_thread, server
   end
 
   defp get_dir_contents(dir) do
@@ -98,29 +98,29 @@ defmodule DistSync.Client do
     GenServer.call {@server_name, server}, message
   end
 
-  defp serve_delete_file(file, server) do
+  defp serve_delete_file(file, fetch_thread, server) do
 #    IO.puts "Serving DELETE from " <> file
 #    basename = Path.basename file
 #    server_cast {:delete
     IO.puts "Not implemented delete yet"
   end
 
-  defp serve_delete_files(files, server) do
-    map_delete = &(serve_delete_file &1, server)
+  defp serve_delete_files(files, fetch_thread, server) do
+    map_delete = &(serve_delete_file &1, fetch_thread, server)
     Enum.map files, map_delete
   end
 
-  defp serve_update_files(files, server) do
-    map_serve = &(serve_update_file &1, server)
+  defp serve_update_files(files, fetch_thread, server) do
+    map_serve = &(serve_update_file &1, fetch_thread, server)
     Enum.map files, map_serve
   end
 
-  defp serve_update_file(file, server) do
+  defp serve_update_file(file, fetch_thread, server) do
     IO.puts "Serving UPDATE from " <> file
     basename = Path.basename file
     {:server_time, time} = server_call {:get_time}, server
     case File.read file do
-      {:ok, contents} -> server_cast {:update, self, basename, {time, :zlib.zip(contents)}}, server
+      {:ok, contents} -> server_cast {:update, basename, {time, :zlib.zip(contents)}, [fetch_thread]}, server
       _ -> :deleted
     end
   end
