@@ -7,12 +7,13 @@ defmodule DistSync.Server do
     {:ok, args}
   end
 
-  def handle_cast({:unsync, {fetch_pid, serve_pid}=subscriber}, state) do
+  def handle_cast({:unsync, subscriber}, state) do
     set_removed_sub = Map.get(state, :subscribers) |> MapSet.delete subscriber
     {:noreply, Map.put(state, :subscribers, set_removed_sub)}
   end
 
   # expects digest: {time_modified, compressed_contents}
+  # where time_modified is in seconds
   def handle_cast({:update, from, filename, digest}, state) do
     {time_modified, _} = digest
     updated_state = case needs_global_update? state, filename, time_modified do
@@ -40,10 +41,6 @@ defmodule DistSync.Server do
     updated_state = state |> (Map.put :subscribers, set_added_sync) |> (Map.put :sync_id, new_id + 1)
 
     {:reply, {:sync_id, new_id}, updated_state}
-  end
-
-  def handle_call({:get_digest, filename}, _from, state) do
-    {:reply, (get_file_digest state, filename), state}
   end
 
   def start_link() do
