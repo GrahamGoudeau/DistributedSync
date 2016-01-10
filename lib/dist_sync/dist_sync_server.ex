@@ -53,19 +53,22 @@ defmodule DistSync.Server do
   end
 
   defp perform_update(from, filename, digest, state) do
+    # only serve the changes to the directories OTHER than where the change originated from
     recipients = for fetch_thread <- get_fetch_threads(state), fetch_thread != from, do: fetch_thread
-    {_, compressed_contents} = digest
+
+    {time_modified, compressed_contents} = digest
+
+    # send the compressed file contents to those fetch threads
     broadcast recipients, {:update, filename, compressed_contents}
 
-    updated_digests = get_file_digests(state) |> Map.put filename, {get_system_time(), compressed_contents}
+    updated_digests = get_file_digests(state) |> Map.put filename, {time_modified, compressed_contents}
+
+    # update the state to reflect the changes
     Map.update! state, :file_digests, fn _ -> updated_digests end
   end
 
-  defp get_system_time() do
-    :os.system_time
-  end
-
   defp needs_global_update?(state, filename, time_modified) do
+    # perform an update if file is new, or if it was modified after we stored it
     case get_file_digest state, filename do
       nil -> true
       {stored_time, _} -> stored_time < time_modified
