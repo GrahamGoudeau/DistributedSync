@@ -9,7 +9,7 @@ defmodule DistSync.Client do
 
     if node_status == true do
       fetch_serve_pids = {fetch_pid, _} = setup_threads absolute_directory, server_atom
-      sync_response = GenServer.call {@server_name, server_atom}, {:sync, fetch_serve_pids}
+      sync_response = server_call {:sync, fetch_serve_pids}, server_atom
       send fetch_pid, sync_response
     else
       IO.puts "Failed to connect; reason: '#{node_status}'"
@@ -94,6 +94,10 @@ defmodule DistSync.Client do
     GenServer.cast {@server_name, server}, message
   end
 
+  defp server_call(message, server) do
+    GenServer.call {@server_name, server}, message
+  end
+
   defp serve_delete_file(file, server) do
 #    IO.puts "Serving DELETE from " <> file
 #    basename = Path.basename file
@@ -114,6 +118,7 @@ defmodule DistSync.Client do
   defp serve_update_file(file, server) do
     IO.puts "Serving UPDATE from " <> file
     basename = Path.basename file
+    {:server_time, time} = server_call {:get_time}, server
     case File.read file do
       {:ok, contents} -> server_cast {:update, self, basename, :zlib.zip(contents)}, server
       _ -> :deleted
