@@ -23,13 +23,17 @@ defmodule DistSync.Client do
   end
 
   def setup_fetch(directory) do
-    #IO.puts "Fetching set up for " <> directory
+    fetch_loop(directory)
+  end
+
+  def fetch_loop(directory) do
     receive do
-      {:update, _, _} -> IO.puts "Got an update to " <> directory <> "!"
-    after
-      0 -> :timeout
+      {:update, filename, compressed_contents} ->
+        handle_fetch_update directory, filename, compressed_contents
+      {:delete, filename} -> filename
     end
-    setup_fetch(directory)
+
+    fetch_loop(directory)
   end
 
   def setup_serve(directory, server) do
@@ -37,6 +41,11 @@ defmodule DistSync.Client do
     file_digests_map = build_digests_map files
     serve_update_files files, server
     serve_loop directory, files, file_digests_map, server
+  end
+
+  defp handle_fetch_update(dir, filename, compressed_contents) do
+    IO.puts "Fetched UPDATE for " <> filename <> " to " <> dir
+    File.write! dir <> "/" <> filename, (:zlib.unzip compressed_contents)
   end
 
   defp serve_loop(dir, files, file_digests_map, server) do
