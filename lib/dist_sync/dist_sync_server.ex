@@ -9,8 +9,6 @@ defmodule DistSync.Server do
 
   def handle_cast({:unsync, {fetch_pid, serve_pid}=subscriber}, state) do
     set_removed_sub = Map.get(state, :subscribers) |> MapSet.delete subscriber
-    send fetch_pid, :kill_signal
-    send serve_pid, :kill_signal
     {:noreply, Map.put(state, :subscribers, set_removed_sub)}
   end
 
