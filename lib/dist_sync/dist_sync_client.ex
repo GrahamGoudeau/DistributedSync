@@ -18,6 +18,9 @@ defmodule DistSync.Client do
 
   defp setup_threads(directory, server) do
     fetch_thread = spawn_link __MODULE__, :setup_fetch, [directory]
+
+    # tell the serve_thread the pid of the fetch thread, so that we
+    # avoid serving our own content to ourselves
     serve_thread = spawn_link __MODULE__, :setup_serve, [directory, fetch_thread, server]
     {fetch_thread, serve_thread}
   end
@@ -60,6 +63,7 @@ defmodule DistSync.Client do
 
     serve_update_files updated_files, fetch_thread, server
     serve_delete_files deleted_files, fetch_thread, server
+
     serve_loop dir, new_files_list, new_digests, fetch_thread, server
   end
 
@@ -118,9 +122,13 @@ defmodule DistSync.Client do
   defp serve_update_file(file, fetch_thread, server) do
     IO.puts "Serving UPDATE from " <> file
     basename = Path.basename file
+
+    # use the server's time scale to avoid ambiguities
     {:server_time, time} = server_call {:get_time}, server
+    updated_digest = {time, :zlib.zip(contents)}
+
     case File.read file do
-      {:ok, contents} -> server_cast {:update, basename, {time, :zlib.zip(contents)}, [fetch_thread]}, server
+      {:ok, contents} -> server_cast {:update, basename, updated_digest, [fetch_thread]}, server
       _ -> :deleted
     end
   end
