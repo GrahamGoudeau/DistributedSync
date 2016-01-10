@@ -22,17 +22,6 @@ defmodule DistSync.Server do
     {:noreply, updated_state}
   end
 
-  def handle_cast({:broadcast_all, message}, state) do
-    state |> get_subscribers_list |> broadcast message
-    {:noreply, state}
-  end
-
-  def handle_cast({:broadcast_except, skip_pid_list, message}, state) do
-    recipients = state |> get_subscribers_list |> Enum.filter &(not list_contains(skip_pid_list, &1))
-    broadcast recipients, message
-    {:noreply, state}
-  end
-
   def handle_cast(_, state) do
     {:noreply, state
   end
@@ -91,12 +80,6 @@ defmodule DistSync.Server do
 
   defp get_file_digests(state) do
     state |> Map.get :file_digests
-  end
-
-  defp list_contains([], _) do false end
-  defp list_contains([x | _], x) do true end
-  defp list_contains([_ | xs], x) do
-    list_contains(xs, x)
   end
 
   defp broadcast([], _) do end
