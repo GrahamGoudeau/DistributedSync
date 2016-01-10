@@ -1,6 +1,8 @@
 defmodule DistSync.Server do
   use GenServer
 
+  @server_name :DistSyncServer
+
   def init(args) do
     {:ok, args}
   end
@@ -43,7 +45,7 @@ defmodule DistSync.Server do
   end
 
   def start_link() do
-    GenServer.start_link(__MODULE__, %{file_digests: %{}, subscribers: %MapSet{}, sync_id: 0}, name: :DistSyncServer)
+    GenServer.start_link(__MODULE__, %{file_digests: %{}, subscribers: %MapSet{}, sync_id: 0}, name: @server_name)
   end
 
   defp perform_update(from, filename, digest, state) do
