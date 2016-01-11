@@ -8,9 +8,8 @@ defmodule DistSync.Client do
     node_status = Node.connect server_atom
 
     if node_status == true do
-      fetch_serve_pids = {fetch_pid, _} = setup_threads absolute_directory, server_atom
-      server_response = server_call {:sync, fetch_serve_pids}, server_atom
-      send fetch_pid, server_response
+      fetch_serve_pids = setup_threads absolute_directory, server_atom
+      server_cast {:sync, fetch_serve_pids}, server_atom
       {:ok, fetch_serve_pids}
     else
       IO.puts "Failed to connect; reason: '#{node_status}'"

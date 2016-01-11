@@ -32,16 +32,11 @@ defmodule DistSync.Server do
     {:noreply, updated_state}
   end
 
-  def handle_cast(_, state) do
-    {:noreply, state}
-  end
-
-  def handle_call({:get_time}, _from, state) do
-    {:reply, {:server_time, :os.system_time}, state}
-  end
-
-  def handle_call({:sync, {fetch_pid, serve_pid}}, _from, state) do
+  def handle_cast({:sync, {fetch_pid, serve_pid}}, state) do
     new_id = (Map.get state, :sync_id)
+
+    # make sure the fetch pid has received the current state of files
+    send fetch_pid, {:update_all, get_file_digests(state)}
 
     # update the subscribers
     set_added_sync = Map.get(state, :subscribers) |> MapSet.put {new_id, fetch_pid, serve_pid}
@@ -49,7 +44,15 @@ defmodule DistSync.Server do
     # update the state with new subscribers set and new ID value
     updated_state = state |> (Map.put :subscribers, set_added_sync)
 
-    {:reply, {:update_all, get_file_digests(state)}, updated_state}
+    {:noreply, updated_state}
+  end
+
+  def handle_cast(_, state) do
+    {:noreply, state}
+  end
+
+  def handle_call({:get_time}, _from, state) do
+    {:reply, {:server_time, :os.system_time}, state}
   end
 
   def handle_call({:refresh_all}, _from, state) do
