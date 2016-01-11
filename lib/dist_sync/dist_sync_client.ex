@@ -55,12 +55,14 @@ defmodule DistSync.Client do
   end
 
   def server_monitor({fetch_pid, serve_pid}, server) do
-    case is_server_alive?(server) do
-      false ->
-        send fetch_pid, {:kill_signal, "Server down"}
-        send serve_pid, {:kill_signal, "Server down"}
-      true ->
-        server_monitor({fetch_pid, serve_pid}, server)
+    if Process.alive?(fetch_pid) and Process.alive?(serve_pid) do
+      case is_server_alive?(server) do
+        false ->
+          send fetch_pid, {:kill_signal, "Server down"}
+          send serve_pid, {:kill_signal, "Server down"}
+        true ->
+          server_monitor({fetch_pid, serve_pid}, server)
+      end
     end
   end
 
@@ -82,11 +84,13 @@ defmodule DistSync.Client do
   def directory_monitor({fetch_thread, serve_thread}, directory) do
     error_message = {:kill_signal, "Directory '" <> directory <> "' deleted"}
 
-    if not File.exists? directory do
-      send fetch_thread, error_message
-      send serve_thread, error_message
-    else
-      directory_monitor({fetch_thread, serve_thread}, directory)
+    if Process.alive? fetch_thread and Process.alive? serve_thread do
+      if not File.exists? directory do
+        send fetch_thread, error_message
+        send serve_thread, error_message
+      else
+        directory_monitor({fetch_thread, serve_thread}, directory)
+      end
     end
   end
 
