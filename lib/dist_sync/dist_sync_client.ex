@@ -17,12 +17,34 @@ defmodule DistSync.Client do
     end
   end
 
+  def unsync({fetch_pid, serve_pid}) do
+    send fetch_pid, :kill_signal
+    send serve_pid, :kill_signal
+  end
+
+  defp is_server_alive?(server) do
+    Enum.find Node.list, false, fn(connection) -> connection == server end
+  end
+
+  def server_monitor({fetch_pid, serve_pid}, server) do
+    case is_server_alive?(server) do
+      false ->
+        send fetch_pid, :kill_signal
+        send serve_pid, :kill_signal
+      server ->
+        server_monitor({fetch_pid, serve_pid}, server)
+    end
+  end
+
   defp setup_threads(directory, server) do
     fetch_thread = spawn_link __MODULE__, :setup_fetch, [directory]
 
     # tell the serve_thread the pid of the fetch thread, so that we
     # avoid serving content from this directory back to this directory
     serve_thread = spawn_link __MODULE__, :setup_serve, [directory, fetch_thread, server]
+
+    # setup the server monitor
+    spawn_link __MODULE__, :server_monitor, [{fetch_thread, serve_thread}, server]
     {fetch_thread, serve_thread}
   end
 
@@ -32,13 +54,20 @@ defmodule DistSync.Client do
 
   def fetch_loop(directory) do
     receive do
-      {:update_all, all_digests} -> handle_fetch_update_all directory, all_digests
+      {:update_all, all_digests} ->
+        handle_fetch_update_all directory, all_digests
+        fetch_loop(directory)
+
       {:update, filename, compressed_contents} ->
         handle_fetch_update directory, filename, compressed_contents
-      {:delete, filename} -> handle_fetch_delete directory, filename
-    end
+        fetch_loop(directory)
 
-    fetch_loop(directory)
+      {:delete, filename} ->
+        handle_fetch_delete directory, filename
+        fetch_loop(directory)
+
+      :kill_signal -> :ok
+    end
   end
 
   def setup_serve(directory, fetch_thread, server) do
@@ -101,7 +130,11 @@ defmodule DistSync.Client do
     serve_update_files updated_files, fetch_thread, server
     serve_delete_files deleted_files, fetch_thread, server
 
-    serve_loop dir, new_files_list, new_digests, fetch_thread, server
+    receive do
+      :kill_signal -> :ok
+    after
+      0 -> serve_loop dir, new_files_list, new_digests, fetch_thread, server
+    end
   end
 
   defp get_dir_contents(dir) do
@@ -136,7 +169,13 @@ defmodule DistSync.Client do
   end
 
   defp server_call(message, server) do
-    GenServer.call {@server_name, server}, message
+    case is_server_alive?(server) do
+      false ->
+        IO.puts "WARNING -- server #{server} has gone offline"
+        send self, :kill_signal
+        :kill_signal
+      server -> GenServer.call {@server_name, server}, message
+    end
   end
 
   defp serve_delete_file(file, fetch_thread, server) do
