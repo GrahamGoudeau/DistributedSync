@@ -18,8 +18,8 @@ defmodule DistSync.Client do
   end
 
   def unsync({fetch_pid, serve_pid}) do
-    send fetch_pid, :kill_signal
-    send serve_pid, :kill_signal
+    send fetch_pid, {:kill_signal, "Unsynced"}
+    send serve_pid, {:kill_signal, "Unsynced"}
   end
 
   defp is_server_alive?(server) do
@@ -29,8 +29,8 @@ defmodule DistSync.Client do
   def server_monitor({fetch_pid, serve_pid}, server) do
     case is_server_alive?(server) do
       false ->
-        send fetch_pid, :kill_signal
-        send serve_pid, :kill_signal
+        send fetch_pid, {:kill_signal, "Server down"}
+        send serve_pid, {:kill_signal, "Server down"}
       server ->
         server_monitor({fetch_pid, serve_pid}, server)
     end
@@ -66,7 +66,9 @@ defmodule DistSync.Client do
         handle_fetch_delete directory, filename
         fetch_loop(directory)
 
-      :kill_signal -> :ok
+      {:kill_signal, reason} ->
+        IO.puts "Fetch thread got kill signal: '#{reason}'"
+        :ok
     end
   end
 
@@ -131,7 +133,9 @@ defmodule DistSync.Client do
     serve_delete_files deleted_files, fetch_thread, server
 
     receive do
-      :kill_signal -> :ok
+      {:kill_signal, reason} ->
+        IO.puts "Serve thread got kill signal: '#{reason}'"
+        :ok
     after
       0 -> serve_loop dir, new_files_list, new_digests, fetch_thread, server
     end
@@ -168,15 +172,15 @@ defmodule DistSync.Client do
     GenServer.cast {@server_name, server}, message
   end
 
-  defp server_call(message, server) do
-    case is_server_alive?(server) do
-      false ->
-        IO.puts "WARNING -- server #{server} has gone offline"
-        send self, :kill_signal
-        :kill_signal
-      server -> GenServer.call {@server_name, server}, message
-    end
-  end
+#  defp server_call(message, server) do
+#    case is_server_alive?(server) do
+#      false ->
+#        IO.puts "WARNING -- server #{server} has gone offline"
+#        send self, :kill_signal
+#        :kill_signal
+#      server -> GenServer.call {@server_name, server}, message
+#    end
+#  end
 
   defp serve_delete_file(file, fetch_thread, server) do
     IO.puts "Serving DELETE from " <> file
