@@ -2,19 +2,40 @@ defmodule DistSync.Client do
   @server_name :DistSyncServer
 
   # params: string, string
+  def sync(directory) do
+    case Process.whereis @server_name do
+      nil ->
+        reason = "#{@server_name} is not running locally"
+        IO.puts reason
+        {:error, reason}
+      server_pid ->
+        complete_sync directory, {:local_server, server_pid}
+    end
+  end
+
   def sync(directory, server) do
-    absolute_directory = get_absolute_path directory
     server_atom = String.to_atom server
     node_status = Node.connect server_atom
 
     if node_status == true do
-      fetch_serve_pids = setup_threads absolute_directory, server_atom
-      server_cast {:sync, fetch_serve_pids}, server_atom
-      {:ok, fetch_serve_pids}
+      complete_sync directory, {:remote_server, server_atom}
     else
-      IO.puts "Failed to connect; reason: '#{node_status}'"
-      {:error, node_status}
+      if not Node.alive? do
+        reason = "Local node not alive"
+      else
+        reason = "Could not find node"
+      end
+
+      IO.puts "Failed to connect to '#{server}'; reason: '#{reason}'"
+      {:error, reason}
     end
+  end
+
+  defp complete_sync(directory, server) do
+    absolute_directory = get_absolute_path directory
+    fetch_serve_pids = setup_threads absolute_directory, server
+    server_cast {:sync, fetch_serve_pids}, server
+    {:ok, fetch_serve_pids}
   end
 
   def unsync({fetch_pid, serve_pid}) do
@@ -22,8 +43,15 @@ defmodule DistSync.Client do
     send serve_pid, {:kill_signal, "Unsynced"}
   end
 
-  defp is_server_alive?(server) do
-    Enum.find Node.list, false, fn(connection) -> connection == server end
+  defp is_server_alive?({:remote_server, server}) do
+    case Enum.find Node.list, false, (fn(connection) -> connection == server end) do
+      false -> false
+      _ -> true
+    end
+  end
+
+  defp is_server_alive?({:local_server, server_pid}) do
+    Process.alive? server_pid
   end
 
   def server_monitor({fetch_pid, serve_pid}, server) do
@@ -31,7 +59,7 @@ defmodule DistSync.Client do
       false ->
         send fetch_pid, {:kill_signal, "Server down"}
         send serve_pid, {:kill_signal, "Server down"}
-      server ->
+      true ->
         server_monitor({fetch_pid, serve_pid}, server)
     end
   end
@@ -45,7 +73,21 @@ defmodule DistSync.Client do
 
     # setup the server monitor
     spawn_link __MODULE__, :server_monitor, [{fetch_thread, serve_thread}, server]
+
+    # setup the directory monitor (kills the threads if the directory is deleted
+    spawn_link __MODULE__, :directory_monitor, [{fetch_thread, serve_thread}, directory]
     {fetch_thread, serve_thread}
+  end
+
+  def directory_monitor({fetch_thread, serve_thread}, directory) do
+    error_message = {:kill_signal, "Directory '" <> directory <> "' deleted"}
+
+    if not File.exists? directory do
+      send fetch_thread, error_message
+      send serve_thread, error_message
+    else
+      directory_monitor({fetch_thread, serve_thread}, directory)
+    end
   end
 
   def setup_fetch(directory) do
@@ -168,7 +210,11 @@ defmodule DistSync.Client do
     end
   end
 
-  defp server_cast(message, server) do
+  defp server_cast(message, {:local_server, _}) do
+    GenServer.cast @server_name, message
+  end
+
+  defp server_cast(message, {:remote_server, server}) do
     GenServer.cast {@server_name, server}, message
   end
 
