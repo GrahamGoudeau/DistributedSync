@@ -197,6 +197,7 @@ defmodule DistSync.Client do
   end
 
   defp get_file_mtime(file) do
+    # get the file mtime in seconds (:posix)
     case File.stat file, [time: :posix] do
       {:ok, stat} -> stat.mtime
       {:error, reason} -> reason

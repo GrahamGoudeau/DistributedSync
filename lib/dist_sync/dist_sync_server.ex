@@ -57,7 +57,8 @@ defmodule DistSync.Server do
   end
 
   def start_link() do
-    GenServer.start_link(__MODULE__, %{file_digests: %{}, subscribers: %MapSet{}, sync_id: 0}, name: @server_name)
+    init_state = %{file_digests: %{}, subscribers: %MapSet{}, sync_id: 0}
+    GenServer.start_link(__MODULE__, init_state, name: @server_name)
   end
 
   defp perform_update(filename, digest, skip_pids, state) do
