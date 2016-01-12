@@ -1,7 +1,6 @@
 defmodule DistSync.Client do
   @server_name :DistSyncServer
 
-  # params: string, string
   def sync(directory) do
     case Process.whereis @server_name do
       nil ->
@@ -13,6 +12,7 @@ defmodule DistSync.Client do
     end
   end
 
+  # params: string, string
   def sync(directory, server) do
     server_atom = String.to_atom server
     node_status = Node.connect server_atom
@@ -84,7 +84,7 @@ defmodule DistSync.Client do
   def directory_monitor({fetch_thread, serve_thread}, directory) do
     error_message = {:kill_signal, "Directory '" <> directory <> "' deleted"}
 
-    if Process.alive? fetch_thread and Process.alive? serve_thread do
+    if (Process.alive? fetch_thread) and (Process.alive? serve_thread) do
       if not File.exists? directory do
         send fetch_thread, error_message
         send serve_thread, error_message
@@ -143,7 +143,7 @@ defmodule DistSync.Client do
     full_filename = dir <> "/" <> filename
     exists = File.exists? full_filename
 
-    case (not exists) or (get_file_mtime full_filename) < server_mtime do 
+    case (not exists) or (get_file_mtime full_filename) < server_mtime do
       true -> handle_fetch_update(dir, filename, compressed_contents)
       _ -> :ok
     end
