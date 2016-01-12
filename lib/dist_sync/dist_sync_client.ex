@@ -1,6 +1,7 @@
 defmodule DistSync.Client do
   @server_name :DistSyncServer
 
+  # sync/1 used if the server is running on the local node
   def sync(directory) do
     case Process.whereis @server_name do
       nil ->
@@ -15,19 +16,28 @@ defmodule DistSync.Client do
   # params: string, string
   def sync(directory, server) do
     server_atom = String.to_atom server
-    node_status = Node.connect server_atom
 
-    if node_status == true do
-      complete_sync directory, {:remote_server, server_atom}
+    if server_atom != :nonode@nohost and server_atom == Node.self do
+      sync directory
     else
-      if not Node.alive? do
-        reason = "Local node not alive"
-      else
-        reason = "Could not find node"
+      case connect_to_node server_atom do
+        :ok -> complete_sync directory, {:remote_server, server_atom}
+        reason ->
+          IO.puts "Failed to connect to '#{server}'; reason: '#{reason}'"
+          {:error, reason}
       end
+    end
+  end
 
-      IO.puts "Failed to connect to '#{server}'; reason: '#{reason}'"
-      {:error, reason}
+  defp connect_to_node(server_atom) do
+    case Node.connect server_atom do
+      true -> :ok
+      _ ->
+        if not Node.alive? do
+          "Local node not alive"
+        else
+          "Could not find node"
+        end
     end
   end
 
