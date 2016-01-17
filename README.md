@@ -1,19 +1,21 @@
 # DistSync
 
-**TODO: Add description**
+## Compiling
 
-## Installation
+Use mix:
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed as:
+    $ mix compile
 
-  1. Add dist_sync to your list of dependencies in `mix.exs`:
+## Usage
 
-        def deps do
-          [{:dist_sync, "~> 0.0.1"}]
-        end
+`DistSync` allows for distributed syncing of directories.  First, the server must be started from within an `iex` session:
 
-  2. Ensure dist_sync is started before your application:
+    $ iex --sname server --cookie cookie_string -S mix
+    iex(server@machine1)1> DistSync.Server.start_link
+    {:ok, #PID<0.example.0>}
+    
+  Once the server has started, the client can be started.  This does not have to be on the same node, or even on the same computer on the network:
 
-        def application do
-          [applications: [:dist_sync]]
-        end
+    $ iex --sname client --cookie cookie_string -S mix
+    iex(client@machine2)1> DistSync.Client.sync("dirA/", "server@machine1")
+    {:ok, {#PID<0.example1.0>, #PID<0.example2.0>}}
